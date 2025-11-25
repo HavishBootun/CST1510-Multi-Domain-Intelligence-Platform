@@ -15,8 +15,7 @@ from app.services.user_service import register_user
 from app.data.users import get_user_by_username
 from app.data.datasets import load_csv_to_table
 
-
-# Directory containing all raw CSV inputs
+# Directory containing CSV files
 RAW_DATA_DIR = Path("DATA")
 
 
@@ -25,28 +24,21 @@ def boot_system():
     print("  >> SYSTEM INITIALISATION SEQUENCE STARTED")
     print("=" * 60 + "\n")
 
-    # -----------------------------------------
-    # 1. Database Connection
-    # -----------------------------------------
+    # 1️⃣ Database connection
     if DB_PATH.exists():
-        print(f" [*] Existing database detected: {DB_PATH.name}")
+        print(f" [*] Existing database found: {DB_PATH.name}")
     else:
-        print(f" [*] Creating new database at: {DB_PATH.name}")
+        print(f" [*] Creating new database: {DB_PATH.name}")
 
     conn = connect_database()
 
-    # -----------------------------------------
-    # 2. Apply Schema Definitions
-    # -----------------------------------------
-    print(" [+] Creating required tables...")
+    # 2️⃣ Apply schema
+    print(" [+] Applying database schema (creating tables if missing)...")
     create_all_tables(conn)
 
-    # -----------------------------------------
-    # 3. Bulk CSV Data Import
-    # -----------------------------------------
-    print("\n [+] Processing CSV Data Imports...")
+    # 3️⃣ Bulk CSV import
+    print("\n [+] Loading CSV datasets...")
 
-    # Map CSV filenames to SQL table names
     data_map = {
         "cyber_incidents.csv": "cyber_incidents",
         "datasets_metadata.csv": "datasets_metadata",
@@ -59,7 +51,7 @@ def boot_system():
         file_path = RAW_DATA_DIR / csv_name
 
         if not file_path.exists():
-            print(f"     [!] WARNING: CSV not found: {csv_name}")
+            print(f"     [!] CSV not found: {csv_name}")
             continue
 
         try:
@@ -67,18 +59,18 @@ def boot_system():
             existing_rows = cursor.fetchone()[0]
 
             if existing_rows == 0:
+                print(f"     -> Loading {csv_name} into table '{table_name}'...")
+                # Load CSV safely, only required columns
                 inserted = load_csv_to_table(file_path, table_name, if_exists="append")
-                print(f"     -> Loaded {inserted} records into '{table_name}'.")
+                print(f"     -> {inserted} records inserted.")
             else:
-                print(f"     -> '{table_name}' already contains {existing_rows} rows. Skipping import.")
+                print(f"     -> Table '{table_name}' already has {existing_rows} rows. Skipping.")
 
-        except Exception as err:
-            print(f"     [!] ERROR loading {csv_name}: {err}")
+        except Exception as e:
+            print(f"     [!] Error processing {csv_name}: {e}")
 
-    # -----------------------------------------
-    # 4. Admin Account Provisioning
-    # -----------------------------------------
-    print("\n [+] Verifying admin credentials...")
+    # 4️⃣ Admin account provisioning
+    print("\n [+] Checking admin account...")
 
     if not get_user_by_username("admin"):
         success, msg = register_user("admin", "Admin123!", role="admin")
@@ -88,12 +80,10 @@ def boot_system():
 
     conn.close()
 
-    # -----------------------------------------
-    # 5. Completion Message
-    # -----------------------------------------
+    # 5️⃣ Completion message
     print("\n" + "=" * 60)
-    print("  >> BOOT COMPLETE — System Ready.")
-    print("  >> Launch the interface using:")
+    print("  >> BOOT COMPLETE — SYSTEM READY")
+    print("  >> Launch Streamlit interface with:")
     print("       streamlit run Home.py")
     print("=" * 60 + "\n")
 
