@@ -1,87 +1,86 @@
-"""
-System Boot Script
-------------------
-Initialises the SQLite database, applies schema definitions,
-loads CSV datasets, and provisions an admin account.
-
-Usage:
-    python main.py
-"""
-
-from pathlib import Path
-from app.data.db import connect_database, DB_PATH
+import pandas as pd
+from app.data.db import connect_database
 from app.data.schema import create_all_tables
-from app.services.user_service import register_user
-from app.data.users import get_user_by_username
 from app.data.datasets import load_csv_to_table
+from app.services.user_service import register_user
+from pathlib import Path
 
-# Directory containing CSV files
-RAW_DATA_DIR = Path("DATA")
+# ----------------------------------------
+# 1. Database & Schema Initialization
+# ----------------------------------------
+conn = connect_database()
+create_all_tables(conn)
+conn.close()
+print("[*] Database schema initialized.")
 
 
-def boot_system():
-    print("\n" + "=" * 60)
-    print("  >> SYSTEM INITIALISATION SEQUENCE STARTED")
-    print("=" * 60 + "\n")
+# ----------------------------------------
+# 2. Bulk Data Loading (ALL WITH EXPLICIT MAPPING)
+# ----------------------------------------
 
-    # 1️⃣ Database connection
-    if DB_PATH.exists():
-        print(f" [*] Existing database found: {DB_PATH.name}")
+# --- A. Load Cyber Incidents ---
+cyber_map = {
+    'Date': 'date', 
+    'Incident Type': 'incident_type', 
+    'Severity': 'severity', 
+    'Status': 'status', 
+    'Description': 'description',
+    'Reported By': 'reported_by'
+}
+csv_path_incidents = Path("DATA") / "cyber_incidents.csv"
+count = load_csv_to_table(
+    csv_path=str(csv_path_incidents), 
+    table_name="cyber_incidents", 
+    column_map=cyber_map
+)
+print(f"[*] Loaded {count} records into cyber_incidents table.")
+
+# --- B. Load IT Tickets (FIXED MAPPING) ---
+tickets_map = {
+    'Ticket_ID': 'ticket_id',
+    'Priority': 'priority',
+    'Status': 'status',
+    'Category': 'category',
+    'Subject': 'subject',
+    'Description': 'description',
+    'Created Date': 'created_date',
+    'Resolved Date': 'resolved_date',
+    'Assigned To': 'assigned_to'
+}
+csv_path_tickets = Path("DATA") / "it_tickets.csv"
+count = load_csv_to_table(
+    csv_path=str(csv_path_tickets), 
+    table_name="it_tickets", 
+    column_map=tickets_map
+)
+print(f"[*] Loaded {count} records into it_tickets table.")
+
+# --- C. Load Datasets Metadata (FIXED MAPPING for robustness) ---
+datasets_map = {
+    'dataset_name': 'dataset_name',
+    'category': 'category',
+    'source': 'source',
+    'last_updated': 'last_updated',
+    'record_count': 'record_count',
+    'file_size_mb': 'file_size_mb'
+}
+csv_path_datasets = Path("DATA") / "datasets_metadata.csv"
+count = load_csv_to_table(
+    csv_path=str(csv_path_datasets), 
+    table_name="datasets_metadata", 
+    column_map=datasets_map
+)
+print(f"[*] Loaded {count} records into datasets_metadata table.")
+
+# ----------------------------------------
+# 3. Initial User Creation
+# ----------------------------------------
+try:
+    register_user("admin", "admin", "admin")
+    print("[*] Default 'admin' user provisioned.")
+except Exception as e:
+    # Handle the case where the admin user already exists
+    if "UNIQUE constraint failed" in str(e):
+        print("[*] Default 'admin' user already exists.")
     else:
-        print(f" [*] Creating new database: {DB_PATH.name}")
-
-    conn = connect_database()
-
-    # 2️⃣ Apply schema
-    print(" [+] Applying database schema (creating tables if missing)...")
-    create_all_tables(conn)
-
-    # 3️⃣ Bulk CSV import with column mapping for cyber_incidents
-    print("\n [+] Loading CSV datasets...")
-
-    data_map = {
-        "cyber_incidents.csv": ("cyber_incidents", {"incident_type": "category"}),  # map CSV column
-        "datasets_metadata.csv": ("datasets_metadata", None),
-        "it_tickets.csv": ("it_tickets", None)
-    }
-
-    cursor = conn.cursor()
-
-    for csv_name, (table_name, col_map) in data_map.items():
-        file_path = RAW_DATA_DIR / csv_name
-        if not file_path.exists():
-            print(f"[!] CSV not found: {csv_name}")
-            continue
-
-        try:
-            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-            existing_rows = cursor.fetchone()[0]
-            if existing_rows == 0:
-                print(f" -> Loading {csv_name} into '{table_name}'...")
-                inserted = load_csv_to_table(file_path, table_name, if_exists="append", column_map=col_map)
-                print(f" -> {inserted} rows inserted.")
-            else:
-                print(f" -> Table '{table_name}' already has {existing_rows} rows. Skipping.")
-        except Exception as e:
-            print(f"[!] Error processing {csv_name}: {e}")
-
-    # 4️⃣ Admin account provisioning
-    print("\n [+] Checking admin account...")
-    if not get_user_by_username("admin"):
-        success, msg = register_user("admin", "Admin123!", role="admin")
-        print(f" -> Admin account created: {msg}")
-    else:
-        print(" -> Admin account already exists.")
-
-    conn.close()
-
-    # 5️⃣ Completion message
-    print("\n" + "=" * 60)
-    print("  >> BOOT COMPLETE — SYSTEM READY")
-    print("  >> Launch Streamlit interface with:")
-    print("       streamlit run Home.py")
-    print("=" * 60 + "\n")
-
-
-if __name__ == "__main__":
-    boot_system()
+        print(f"[!] Error provisioning admin user: {e}")

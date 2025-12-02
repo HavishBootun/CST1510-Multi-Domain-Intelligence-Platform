@@ -51,11 +51,11 @@ def create_it_tickets_table(conn):
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS it_tickets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ticket_id TEXT UNIQUE NOT NULL,
+            ticket_id TEXT UNIQUE,  -- FIX: Removed NOT NULL constraint
             priority TEXT,
             status TEXT,
             category TEXT,
-            subject TEXT NOT NULL,
+            subject TEXT,
             description TEXT,
             created_date TEXT,
             resolved_date TEXT,

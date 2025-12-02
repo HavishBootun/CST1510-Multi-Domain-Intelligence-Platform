@@ -1,56 +1,47 @@
 import streamlit as st
-# We need to import our backend logic to handle the actual authentication
 from app.services.user_service import login_user, register_user
 
 # 1. Setup the page configuration
-# I'm using a 'centered' layout here so the login box focuses the user's attention.
 st.set_page_config(
     page_title="Auth Portal | Intel Platform", 
     page_icon="🛡️", 
     layout="centered"
 )
 
-# 2. Manage Session State
-# We need to make sure these variables exist before we try to check them.
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+# 2. Manage Session State (Using 'authenticated' key for consistency)
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
     
 if "username" not in st.session_state:
     st.session_state.username = ""
 
 # 3. Main Header area
 st.title("🛡️ Intelligence Portal")
-st.markdown("---")  # A nice divider line
+st.markdown("---")
 
 # 4. Auto-Redirect Check
-# If the user is already logged in, we shouldn't show them the login screen again.
-if st.session_state.logged_in:
+if st.session_state.authenticated:
     st.info(f"You are currently authenticated as **{st.session_state.username}**.")
     
-    # Simple button to take them to the main app
+    # CRITICAL FIX: Use the full path for the switch command
     if st.button("🚀 Access Dashboard", use_container_width=True, type="primary"):
-        st.switch_page("pages/Dashboard.py")
+        st.switch_page("pages/Dashboard.py") 
     
-    # Stop the script here so the login forms below don't render
-    st.stop()
+    st.stop() 
 
-# 5. Authentication Interface
-# I'll use tabs to keep the interface clean, separating Login from Sign Up.
-login_tab, signup_tab = st.tabs(["🔑 Sign In", "📝 Create Account"])
+# 5. Tabbed Interface for Login/Registration
+login_tab, signup_tab = st.tabs(["Sign In", "Register"])
 
 # --- LOGIN SECTION ---
 with login_tab:
-    st.subheader("Access Your Account")
+    st.subheader("Existing User Sign In")
     
-    # Using a form is better because it lets users hit 'Enter' to submit
-    with st.form("auth_form"):
-        entered_user = st.text_input("Username", placeholder="e.g. analyst_01")
+    with st.form("login_form"):
+        entered_user = st.text_input("Username")
         entered_pass = st.text_input("Password", type="password")
         
-        # The form button
-        login_btn = st.form_submit_button("Authenticate", type="primary")
-
-    # What happens when they click login?
+        login_btn = st.form_submit_button("Log In", type="primary")
+        
     if login_btn:
         if not entered_user or not entered_pass:
             st.warning("⚠️ Please provide both credentials.")
@@ -59,13 +50,13 @@ with login_tab:
             is_valid, response_msg = login_user(entered_user, entered_pass)
             
             if is_valid:
-                # Update the browser's session state
-                st.session_state.logged_in = True
+                # CRITICAL: Update the consistent session state keys
+                st.session_state.authenticated = True
                 st.session_state.username = entered_user
                 
                 st.success(f"✅ {response_msg}")
-                # Send them to the dashboard immediately
-                st.switch_page("pages/Dashboard.py")
+                # CRITICAL FIX: Use the full path for the switch command
+                st.switch_page("pages/Dashboard.py") 
             else:
                 st.error(f"❌ {response_msg}")
 
@@ -91,4 +82,4 @@ with signup_tab:
                 st.success(f"🎉 {msg}")
                 st.info("You can now switch to the **Sign In** tab to log in.")
             else:
-                st.error(f"❌ {msg}")
+                st.error(f"Failed to register user: {msg}")

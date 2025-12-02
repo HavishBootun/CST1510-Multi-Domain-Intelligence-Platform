@@ -1,109 +1,288 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 
-# Importing our database actions
+# Import the data retrieval functions
 from app.data.incidents import get_all_incidents, insert_incident
+from app.data.tickets import get_all_tickets
+from app.data.datasets import get_all_datasets
 
-# 1️⃣ Page Configuration
-st.set_page_config(
-    page_title="Threat Feed",
-    page_icon="📡",
-    layout="wide"
+# Import the Gemini service functions
+from app.services.gemini_service import (
+    initialize_gemini_client,
+    get_incident_summary_analysis,
+    get_ticket_trend_analysis,
+    get_dataset_value_assessment
 )
 
-# 2️⃣ Security Gatekeeper
-if "logged_in" not in st.session_state or not st.session_state.logged_in:
+# -----------------------------------
+# 1. Page Configuration
+# -----------------------------------
+st.set_page_config(
+    page_title="Intelligence Platform Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# -----------------------------------
+# 2. Security Gatekeeper
+# -----------------------------------
+if "authenticated" not in st.session_state or not st.session_state.authenticated:
     st.warning("⛔ Access Restricted. Please log in first.")
-    if st.button("Back to Login"):
-        st.switch_page("Home.py")
+    st.switch_page("Home.py")
     st.stop()
 
-# 3️⃣ Sidebar
+# -----------------------------------
+# 3. Initialize Gemini Client Once
+# -----------------------------------
+if 'gemini_client' not in st.session_state:
+    st.session_state.gemini_client = initialize_gemini_client()
+
+gemini_client = st.session_state.gemini_client
+
+# -----------------------------------
+# Chat Component (Fixed to Avoid Widget Key Collision)
+# -----------------------------------
+def run_contextual_chat(chat_key: str, data_df: pd.DataFrame, system_prompt: str, client):
+    """
+    Renders an interactive chat interface contextualized by the provided DataFrame.
+    Chat input key and history key are separated to avoid Streamlit widget state collisions.
+    """
+
+    if client is None:
+        st.info("AI Chat is disabled because the Gemini client could not be initialized.")
+        return
+
+    history_key = f"{chat_key}_history"
+    input_key = f"{chat_key}_input"
+
+    # Initialize chat history
+    if history_key not in st.session_state:
+        st.session_state[history_key] = [
+            {"role": "assistant", "content": system_prompt}
+        ]
+
+    # Display history
+    for message in st.session_state[history_key]:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Chat input with distinct key
+    if prompt := st.chat_input("Ask a question about this data...", key=input_key):
+        st.session_state[history_key].append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Prepare condensed dataset
+        limited_df = data_df.head(50)
+        data_string = limited_df.to_markdown(index=False)
+
+        full_query = f"""
+        CONTEXT: You are an expert AI data analyst. Your knowledge is strictly limited to the provided dataset.
+        Only the first {len(limited_df)} rows are shown.
+
+        DATA:
+        {data_string}
+
+        USER QUESTION:
+        {prompt}
+
+        Provide insights only from the given data.
+        """
+
+        # Call Gemini
+        with st.spinner("Thinking..."):
+            try:
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=full_query
+                )
+                assistant_response = response.text
+            except Exception as e:
+                assistant_response = f"API Error: {e}"
+
+        with st.chat_message("assistant"):
+            st.markdown(assistant_response)
+
+        st.session_state[history_key].append({"role": "assistant", "content": assistant_response})
+
+
+# -----------------------------------
+# Sidebar
+# -----------------------------------
 with st.sidebar:
-    st.header("👤 User Profile")
-    st.write(f"**Analyst:** {st.session_state.username}")
-    st.write("**Role:** Cyber Analyst")
+    st.title("Intelligence Platform 📊")
+    st.header(f"Welcome, {st.session_state.get('username', 'Analyst')}!")
     st.divider()
-    if st.button("🚪 Log Out", type="secondary"):
-        st.session_state.logged_in = False
+
+    if st.button("🚪 Log Out", type="secondary", use_container_width=True):
+        st.session_state.authenticated = False
         st.session_state.username = ""
         st.switch_page("Home.py")
 
-# 4️⃣ Main Title
-st.title("📡 Live Threat Intelligence Feed")
-st.markdown(f"Welcome back, **{st.session_state.username}**. Here is the current security posture.")
+# -----------------------------------
+# Main Layout
+# -----------------------------------
+st.title("Enterprise Intelligence Overview")
 
-# 5️⃣ Fetch Data
-incidents_df = get_all_incidents()
+tab1, tab2, tab3 = st.tabs(["🛡️ Cyber Incidents", "💻 IT Tickets", "📚 Data Catalog"])
 
-# 6️⃣ KPIs
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-with kpi1:
-    st.metric("Total Incidents", len(incidents_df))
-with kpi2:
-    open_cases = len(incidents_df[incidents_df['status'] == 'Open']) if 'status' in incidents_df.columns else 0
-    st.metric("Active / Open", open_cases, delta="Action Required", delta_color="inverse")
-with kpi3:
-    crit_cases = len(incidents_df[incidents_df['severity'] == 'Critical']) if 'severity' in incidents_df.columns else 0
-    st.metric("Critical Threats", crit_cases, delta_color="inverse")
-with kpi4:
-    resolved_cases = len(incidents_df[incidents_df['status'] == 'Resolved']) if 'status' in incidents_df.columns else 0
-    st.metric("Resolved", resolved_cases)
+# -----------------------------------
+# TAB 1 — CYBER INCIDENTS
+# -----------------------------------
+with tab1:
+    st.header("🛡️ Cyber Incidents Analysis")
+    incidents_df = get_all_incidents()
 
-st.divider()
+    # AI Summary
+    st.subheader("Executive AI Analysis")
+    if gemini_client:
+        with st.spinner("🤖 Generating Summary..."):
+            ai_summary = get_incident_summary_analysis(incidents_df, gemini_client)
+        st.markdown(ai_summary)
 
-# 7️⃣ Visualisations
-chart_col_left, chart_col_right = st.columns(2)
+    st.markdown("---")
 
-with chart_col_left:
-    st.subheader("🔍 Incidents by Category")
-    if 'category' in incidents_df.columns and not incidents_df.empty:
-        type_counts = incidents_df['category'].value_counts().reset_index()
-        type_counts.columns = ['category', 'count']
-        fig_bar = px.bar(type_counts, x='count', y='category', orientation='h', color='count',
-                         color_continuous_scale='Blues')
-        st.plotly_chart(fig_bar, use_container_width=True)
-    else:
-        st.info("No incident category data available.")
+    # Data and charts
+    col_vis, col_chat = st.columns([2, 1])
 
-with chart_col_right:
-    st.subheader("⚠️ Severity Distribution")
-    if 'severity' in incidents_df.columns and not incidents_df.empty:
-        fig_pie = px.pie(incidents_df, names='severity', hole=0.4,
-                         color_discrete_sequence=px.colors.sequential.RdBu)
-        st.plotly_chart(fig_pie, use_container_width=True)
-    else:
-        st.info("No severity data available.")
+    with col_vis:
+        if incidents_df.empty:
+            st.info("No incident data found.")
+        else:
+            col1, col2 = st.columns(2)
 
-# 8️⃣ Data Entry Form
-with st.expander("➕ Log New Security Event"):
-    st.write("Fill out the details below to log a new threat into the database.")
-    with st.form("incident_entry_form"):
-        f_col1, f_col2 = st.columns(2)
-        with f_col1:
-            i_date = st.date_input("Date of Occurrence")
-            i_type = st.selectbox("Threat Type", ["Phishing", "Malware", "DDoS", "Ransomware", "Insider", "Other"])
-            i_sev = st.selectbox("Severity Level", ["Low", "Medium", "High", "Critical"])
-        with f_col2:
-            i_status = st.selectbox("Current Status", ["Open", "Investigating", "Resolved", "Closed"])
-            i_desc = st.text_area("Incident Details / Description")
-        submit_incident = st.form_submit_button("📥 Save to Database")
+            with col1:
+                st.subheader("Severity Distribution")
+                st.bar_chart(incidents_df['severity'].value_counts())
 
-        if submit_incident:
-            insert_incident(
-                date=str(i_date),
-                severity=i_sev,
-                category=i_type,
-                status=i_status,
-                description=i_desc
+            with col2:
+                st.subheader("Status Breakdown")
+                st.area_chart(incidents_df['status'].value_counts())
+
+            st.dataframe(incidents_df, use_container_width=True)
+
+    with col_chat:
+        st.subheader("🤖 Incident Data Navigator")
+        with st.container():
+            run_contextual_chat(
+                chat_key="incident_chat",
+                data_df=incidents_df,
+                system_prompt="Hello! I am the Cyber Data Navigator. Ask me anything about the incident data.",
+                client=gemini_client
             )
-            st.success("New incident logged successfully!")
-            st.rerun()
 
-# 9️⃣ Data Table
-st.subheader("📋 Incident Logs")
-if not incidents_df.empty:
-    st.dataframe(incidents_df, use_container_width=True, hide_index=True)
-else:
-    st.info("No incidents to display.")
+    # Incident Entry Form
+    with st.expander("➕ Log New Cyber Incident"):
+        with st.form("incident_entry_form"):
+            f_col1, f_col2 = st.columns(2)
+
+            with f_col1:
+                i_date = st.date_input("Date of Occurrence")
+                i_type = st.selectbox("Incident Type", ["Phishing", "Malware", "DDoS", "Ransomware", "Other"])
+                i_sev = st.selectbox("Severity Level", ["Low", "Medium", "High", "Critical"])
+
+            with f_col2:
+                i_status = st.selectbox("Current Status", ["Open", "Investigating", "Resolved", "Closed"])
+                i_desc = st.text_area("Details / Description")
+
+            submit = st.form_submit_button("📥 Save to Database", type="primary")
+
+            if submit:
+                insert_incident(
+                    date=str(i_date),
+                    incident_type=i_type,
+                    severity=i_sev,
+                    status=i_status,
+                    description=i_desc,
+                    reported_by=st.session_state.username
+                )
+                st.success("New incident logged successfully! Refreshing data...")
+                st.rerun()
+
+
+# -----------------------------------
+# TAB 2 — IT TICKETS
+# -----------------------------------
+with tab2:
+    st.header("💻 IT Service Management Overview")
+    df_tickets = get_all_tickets()
+
+    st.subheader("Trend and Bottleneck Analysis")
+    if gemini_client:
+        with st.spinner("🤖 Generating Trend Analysis..."):
+            ai_summary = get_ticket_trend_analysis(df_tickets, gemini_client)
+        st.markdown(ai_summary)
+
+    st.markdown("---")
+
+    col_vis, col_chat = st.columns([2, 1])
+
+    with col_vis:
+        if df_tickets.empty:
+            st.info("No IT ticket data found.")
+        else:
+            st.metric("Total Tickets", len(df_tickets))
+
+            colA, colB = st.columns(2)
+
+            with colA:
+                st.subheader("Ticket Status Breakdown")
+                st.bar_chart(df_tickets['status'].value_counts())
+
+            with colB:
+                st.subheader("Priority Distribution")
+                st.bar_chart(df_tickets['priority'].value_counts())
+
+            st.dataframe(df_tickets, use_container_width=True)
+
+    with col_chat:
+        st.subheader("🤖 IT Tickets Assistant")
+        with st.container():
+            run_contextual_chat(
+                chat_key="tickets_chat",
+                data_df=df_tickets,
+                system_prompt="Hello! I am the IT Tickets Assistant. Ask questions about trends, workloads, and ticket patterns.",
+                client=gemini_client
+            )
+
+# -----------------------------------
+# TAB 3 — DATA CATALOG
+# -----------------------------------
+with tab3:
+    st.header("📚 Data Science Catalog Metadata")
+    df_datasets = get_all_datasets()
+
+    st.subheader("Data Asset Value Assessment")
+    if gemini_client:
+        with st.spinner("🤖 Assessing Data Value..."):
+            ai_summary = get_dataset_value_assessment(df_datasets, gemini_client)
+        st.markdown(ai_summary)
+
+    st.markdown("---")
+
+    col_vis, col_chat = st.columns([2, 1])
+
+    with col_vis:
+        if df_datasets.empty:
+            st.info("No datasets metadata found.")
+        else:
+            df_datasets['record_count'] = pd.to_numeric(df_datasets['record_count'], errors='coerce').fillna(0).astype(int)
+            df_datasets['file_size_mb'] = pd.to_numeric(df_datasets['file_size_mb'], errors='coerce').fillna(0)
+
+            total_records = df_datasets['record_count'].sum()
+            st.metric("Total Records Across All Datasets", f"{total_records:,}")
+
+            st.subheader("Datasets by Category")
+            st.bar_chart(df_datasets['category'].value_counts())
+
+            st.dataframe(df_datasets, use_container_width=True)
+
+    with col_chat:
+        st.subheader("🤖 Data Catalog Expert")
+        with st.container():
+            run_contextual_chat(
+                chat_key="datasets_chat",
+                data_df=df_datasets,
+                system_prompt="Hello! I am the Data Catalog Expert. Ask me anything about dataset metadata.",
+                client=gemini_client
+            )

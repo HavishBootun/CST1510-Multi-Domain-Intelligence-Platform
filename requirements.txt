@@ -2,3 +2,5 @@ pandas
 bcrypt
 streamlit
 plotly
+tabulate
+google_genai
