@@ -41,6 +41,16 @@ o	Data Entry: Integrated forms to log new incidents directly to the backend.
 
 Week 10: Implementation of API
 
+Focus: Introducing a structured API layer to allow external systems, automation scripts, or future mobile/desktop applications to interact with the intelligence platform programmatically.
+
+• API Architecture: Designed and implemented a REST-style API using Python to expose controlled endpoints for incidents, tickets, users, and dataset metadata.
+• Authentication Layer: Added secure token-based access to ensure that only authenticated clients can interact with API endpoints.
+• Data Retrieval Endpoints: Implemented GET routes to return cybersecurity incidents, IT support tickets, and dataset metadata in JSON format for validated users.
+• Data Submission Endpoints: Added POST routes allowing external applications to insert new incidents or tickets directly into the database.
+• Validation and Sanitisation: Included input validation to prevent malformed or unsafe API requests from reaching the database layer.
+• Error Handling: Implemented consistent structured error responses for invalid tokens, incorrect input formats, or unavailable resources.
+• Integration Support: Prepared the system for future expansion by ensuring that all API methods follow a clean and predictable structure to support automation and third-party integration.
+
 Deployment Instructions
 1. Environment Setup Install the necessary Python libraries:
 pip install -r requirements.txt
