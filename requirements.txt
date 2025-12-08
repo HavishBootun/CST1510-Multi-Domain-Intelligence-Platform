@@ -3,4 +3,4 @@ bcrypt
 streamlit
 plotly
 tabulate
-google_genai
+ google-genai

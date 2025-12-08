@@ -8,19 +8,17 @@ from app.data.datasets import load_csv_to_table
 from app.services.user_service import register_user
 
 def main():
-    # -----------------------------------------------------
+    
     # 1. Database & Schema Initialization
-    # -----------------------------------------------------
     conn = connect_database()
     create_all_tables(conn)
     conn.close()
     print("[*] Database schema initialized.")
 
-    # -----------------------------------------------------
+    
     # 2. Bulk Data Loading (ALL WITH EXPLICIT MAPPING)
-    # -----------------------------------------------------
 
-    # --- A. Load Cyber Incidents ---
+    # A. Load Cyber Incidents
     cyber_map = {
         'Date': 'date',
         'Incident Type': 'incident_type',
@@ -37,7 +35,7 @@ def main():
     )
     print(f"[*] Loaded {count} records into cyber_incidents table.")
 
-    # --- B. Load IT Tickets ---
+    # B. Load IT Tickets
     tickets_map = {
         'Ticket_ID': 'ticket_id',
         'Priority': 'priority',
@@ -57,7 +55,7 @@ def main():
     )
     print(f"[*] Loaded {count} records into it_tickets table.")
 
-    # --- C. Load Datasets Metadata ---
+    # C. Load Datasets Metadata
     datasets_map = {
         'dataset_name': 'dataset_name',
         'category': 'category',
@@ -74,9 +72,8 @@ def main():
     )
     print(f"[*] Loaded {count} records into datasets_metadata table.")
 
-    # -----------------------------------------------------
+    
     # 3. Initial User Creation
-    # -----------------------------------------------------
     try:
         register_user("admin", "admin", "admin")
         print("[*] Default 'admin' user provisioned.")
